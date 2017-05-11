@@ -518,29 +518,48 @@ function receivedMessage(event) {
     }
 
     getUserInfo(senderID, function (response) {
-        var currentChat = MongoClient.
-        var currentChat = personalChatMap.get(senderID);
-        if (!currentChat) {
-            personalChatMap.set(senderID, chatscripts.get(initialChatId));
-            currentChat = personalChatMap.get(senderID);
-        }
-        recipientInfo = JSON.parse(response);
-        console.log(recipientInfo);
-        if (messageText) {
-            if(messageText.substring(0,1) === '*'){
-                sendTextMessage(senderID, "*Noted, thanks for the feedback!");
-                return;
-            }
-            switch (messageText) {
-                case 'name':
-                    sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
-                    break;
-                default:
-                    sendMessageContent(currentChat.message, senderID);
-            }
-        } else if (messageAttachments) {
-            sendTextMessage(senderID, "Message with attachment received");
-        }
+        MongoClient.connect(MONGO_URL, function(err, db) {
+            db.collection('users').find({psid:senderID}).toArray(function(err, users) {
+                console.log(users);
+                var user;
+                if (users.length === 0){
+                    user = {
+                        psid: senderID,
+                        currentChatName: initialChatId
+                    }
+                    db.collection('users').updateOne({psid:senderID}, {$set: {currentChatName: initialChatId}}, {
+                        upsert: true
+                    });
+                } else {
+                    user = users[0];
+                }
+                var chatName = user.currentChatName;
+                db.collection('chatscripts').find({name:chatName}).toArray(function(err, chats) {
+                    var currentChat = chats[0];
+
+                    db.close();
+
+                    recipientInfo = JSON.parse(response);
+                    console.log(recipientInfo);
+                    if (messageText) {
+                        if(messageText.substring(0,1) === '*'){
+                            sendTextMessage(senderID, "*Noted, thanks for the feedback!");
+                            return;
+                        }
+                        switch (messageText) {
+                            case 'name':
+                                sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
+                                break;
+                            default:
+                                sendMessageContent(currentChat.message, senderID);
+                        }
+                    } else if (messageAttachments) {
+                        sendTextMessage(senderID, "Message with attachment received");
+                    }
+
+                });
+            });
+        });
     });
 }
 
@@ -652,17 +671,43 @@ function sendTextMessage(recipientId, messageText) {
 }
 
 function handleQuickReply(payload, recipientId, recipientInfo) {
-    var currentChat = personalChatMap.get(recipientId)
-    var chatTransitions = currentChat.transitions;
-    console.log(payload);
-    chatTransitions.forEach(function(transition){
-        if (transition.signal == payload){
-            console.log("transition: "+transition.signal)
-            console.log(chatscripts.get(transition.target));
-            currentChat = chatscripts.get(transition.target);
-            personalChatMap.set(recipientId, currentChat);
-            sendMessageContent(currentChat.message, recipientId);
-        }
+    MongoClient.connect(MONGO_URL, function(err, db) {
+        db.collection('users').find({psid: recipientId}).toArray(function (err, users) {
+            console.log(users);
+            var user;
+            if (users.length === 0) {
+                user = {
+                    psid: recipientId,
+                    currentChatName: initialChatId
+                }
+                db.collection('users').updateOne({psid: recipientId}, {$set: {currentChatName: initialChatId}}, {
+                    upsert: true
+                });
+            } else {
+                user = users[0];
+            }
+            var chatName = user.currentChatName;
+            db.collection('chatscripts').find({name: chatName}).toArray(function (err, chats) {
+                var currentChat = chats[0];
+
+                var chatTransitions = currentChat.transitions;
+                console.log(payload);
+                chatTransitions.forEach(function (transition) {
+                    if (transition.signal == payload) {
+                        console.log("transition: " + transition.signal)
+                        console.log(chatscripts.get(transition.target));
+                        db.collection('chatscripts').find({name: transition.target}).toArray(function (err, chats) {
+                            var newChat = chats[0];
+
+                            db.collection('users').updateOne({psid: recipientId}, {$set: {currentChatName: newChat.name}}, {
+                                upsert: true
+                            });
+                            sendMessageContent(newChat.message, recipientId);
+                        });
+                    }
+                });
+            });
+        });
     });
 }
 
