@@ -10,35 +10,256 @@
 /* jshint node: true, devel: true */
 'use strict';
 
-var chatscripts = {
-    initial: {
-        message: {
-            text: "Hey how’s it going?",
-            quick_replies: [
-                {
-                    "content_type": "text",
-                    "title": "Worried",
-                    "payload": "switch.feeling.worried"
-                },
-                {
-                    "content_type": "text",
-                    "title": "Down",
-                    "payload": "switch.feeling.down"
-                },
-                {
-                    "content_type": "text",
-                    "title": "Chill",
-                    "payload": "switch.feeling.chill"
-                },
-                {
-                    "content_type": "text",
-                    "title": "Pretty Great",
-                    "payload": "switch.feeling.pretty_great"
-                }
-            ]
+var MongoClient = require('mongodb').MongoClient
+    , assert = require('assert');
+
+// Connection URL
+const MONGO_URL = 'mongodb://localhost:27017/hopelab';
+
+// Use connect method to connect to the server
+MongoClient.connect(MONGO_URL, function(err, db) {
+    assert.equal(null, err);
+    console.log("Connected successfully to server");
+
+    db.close();
+});
+
+var chatscripts = new Map();
+
+chatscripts.set("one", {
+    message: {
+        text: "This is menu 1. Go to which menu?",
+        quick_replies: [
+            {
+                "content_type": "text",
+                "title": "2",
+                "payload": "2"
+            },
+            {
+                "content_type": "text",
+                "title": "3",
+                "payload": "3"
+            },
+            {
+                "content_type": "text",
+                "title": "4",
+                "payload": "4"
+            },
+            {
+                "content_type": "text",
+                "title": "5",
+                "payload": "5"
+            }
+        ]
+    },
+    transitions: [
+        {
+            signal: '2',
+            target: "two"
+        },
+        {
+            signal: '3',
+            target: "three"
+        },
+        {
+            signal: '4',
+            target: "four"
+        },
+        {
+            signal: '5',
+            target: "five"
         }
-    }
-}
+
+    ]
+});
+
+chatscripts.set("two", {
+    message: {
+        text: "This is menu 2. Go to which menu?",
+        quick_replies: [
+            {
+                "content_type": "text",
+                "title": "1",
+                "payload": "1"
+            },
+            {
+                "content_type": "text",
+                "title": "3",
+                "payload": "3"
+            },
+            {
+                "content_type": "text",
+                "title": "4",
+                "payload": "4"
+            },
+            {
+                "content_type": "text",
+                "title": "5",
+                "payload": "5"
+            }
+        ]
+    },
+    transitions: [
+        {
+            signal: '1',
+            target: "one"
+        },
+        {
+            signal: '3',
+            target: "three"
+        },
+        {
+            signal: '4',
+            target: "four"
+        },
+        {
+            signal: '5',
+            target: "five"
+        }
+
+    ]
+});
+chatscripts.set("three", {
+    message: {
+        text: "This is menu 3. Go to which menu?",
+        quick_replies: [
+            {
+                "content_type": "text",
+                "title": "1",
+                "payload": "1"
+            },
+            {
+                "content_type": "text",
+                "title": "2",
+                "payload": "2"
+            },
+            {
+                "content_type": "text",
+                "title": "4",
+                "payload": "4"
+            },
+            {
+                "content_type": "text",
+                "title": "5",
+                "payload": "5"
+            }
+        ]
+    },
+    transitions: [
+        {
+            signal: '1',
+            target: "one"
+        },
+        {
+            signal: '2',
+            target: "two"
+        },
+        {
+            signal: '4',
+            target: "four"
+        },
+        {
+            signal: '5',
+            target: "five"
+        }
+
+    ]
+});
+chatscripts.set("four", {
+    message: {
+        text: "This is menu 4. Go to which menu?",
+        quick_replies: [
+            {
+                "content_type": "text",
+                "title": "1",
+                "payload": "1"
+            },
+            {
+                "content_type": "text",
+                "title": "2",
+                "payload": "2"
+            },
+            {
+                "content_type": "text",
+                "title": "3",
+                "payload": "3"
+            },
+            {
+                "content_type": "text",
+                "title": "5",
+                "payload": "5"
+            }
+        ]
+    },
+    transitions: [
+        {
+            signal: '1',
+            target: "one"
+        },
+        {
+            signal: '2',
+            target: "two"
+        },
+        {
+            signal: '3',
+            target: "three"
+        },
+        {
+            signal: '5',
+            target: "five"
+        }
+
+    ]
+});
+chatscripts.set("five", {
+    message: {
+        text: "This is menu 5. Go to which menu?",
+        quick_replies: [
+            {
+                "content_type": "text",
+                "title": "1",
+                "payload": "1"
+            },
+            {
+                "content_type": "text",
+                "title": "2",
+                "payload": "2"
+            },
+            {
+                "content_type": "text",
+                "title": "3",
+                "payload": "3"
+            },
+            {
+                "content_type": "text",
+                "title": "4",
+                "payload": "4"
+            }
+        ]
+    },
+    transitions: [
+        {
+            signal: '1',
+            target: "one"
+        },
+        {
+            signal: '2',
+            target: "two"
+        },
+        {
+            signal: '3',
+            target: "three"
+        },
+        {
+            signal: '4',
+            target: "four"
+        }
+
+    ]
+});
+const initialChatId = "one";
+
+var personalChatMap = new Map();
 
 const
     bodyParser = require('body-parser'),
@@ -54,11 +275,6 @@ app.set('view engine', 'ejs');
 app.use(bodyParser.json({verify: verifyRequestSignature}));
 app.use(express.static('public'));
 
-/*
- * Be sure to setup your config values before running this code. You can
- * set them using environment variables or modifying the config file in /config.
- *
- */
 
 if (!String.prototype.format) {
     String.prototype.format = function () {
@@ -302,14 +518,25 @@ function receivedMessage(event) {
     }
 
     getUserInfo(senderID, function (response) {
+        var currentChat = MongoClient.
+        var currentChat = personalChatMap.get(senderID);
+        if (!currentChat) {
+            personalChatMap.set(senderID, chatscripts.get(initialChatId));
+            currentChat = personalChatMap.get(senderID);
+        }
         recipientInfo = JSON.parse(response);
+        console.log(recipientInfo);
         if (messageText) {
+            if(messageText.substring(0,1) === '*'){
+                sendTextMessage(senderID, "*Noted, thanks for the feedback!");
+                return;
+            }
             switch (messageText) {
                 case 'name':
                     sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
                     break;
                 default:
-                    sendMessageContent(chatscripts.initial.message, senderID);
+                    sendMessageContent(currentChat.message, senderID);
             }
         } else if (messageAttachments) {
             sendTextMessage(senderID, "Message with attachment received");
@@ -424,52 +651,21 @@ function sendTextMessage(recipientId, messageText) {
     callSendAPI(messageData);
 }
 
-
-function handleFeelings(payload, recipientId, recipientInfo) {
-    console.log(payload);
-    switch (payload) {
-        case 'worried':
-            sendTextMessage(recipientId, "Placeholder text for something a robot might say to {0} to help when you're feeling worried !!".format(recipientInfo.first_name));
-            break;
-        case 'down':
-            sendTextMessage(recipientId, "Placeholder text for something a robot might say to cheer you up when you're feeling down :(");
-            break;
-        case 'chill':
-            sendTextMessage(recipientId, "Placeholder text for something a robot might say when you're feeling chill~");
-            break;
-        case 'pretty_great':
-            sendTextMessage(recipientId, "Placeholder text for something cool a robot might say when you're feeling pretty great!");
-            break;
-        default:
-            sendTextMessage(recipientId, "I'm not sure how you even got here!");
-    }
-}
-
-function handleSwitch(payload, recipientId, recipientInfo) {
-    console.log(payload);
-    var replyType = payload.substring(0, payload.indexOf('.'));
-    var replySubtype = payload.substring(payload.indexOf('.') + 1);
-    switch (replyType) {
-        case 'feeling':
-            handleFeelings(replySubtype, recipientId, recipientInfo)
-            break;
-        default:
-            sendTextMessage(recipientId, replySubtype);
-    }
-}
-
 function handleQuickReply(payload, recipientId, recipientInfo) {
+    var currentChat = personalChatMap.get(recipientId)
+    var chatTransitions = currentChat.transitions;
     console.log(payload);
-    var replyType = payload.substring(0, payload.indexOf('.'));
-    var replySubtype = payload.substring(payload.indexOf('.') + 1);
-    switch (replyType) {
-        case 'switch':
-            handleSwitch(replySubtype, recipientId, recipientInfo)
-            break;
-        default:
-            sendTextMessage(recipientId, replySubtype);
-    }
+    chatTransitions.forEach(function(transition){
+        if (transition.signal == payload){
+            console.log("transition: "+transition.signal)
+            console.log(chatscripts.get(transition.target));
+            currentChat = chatscripts.get(transition.target);
+            personalChatMap.set(recipientId, currentChat);
+            sendMessageContent(currentChat.message, recipientId);
+        }
+    });
 }
+
 
 function sendMessageContent(messageContent, recipientId) {
     var messageData = {
