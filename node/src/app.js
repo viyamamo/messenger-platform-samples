@@ -23,7 +23,7 @@ MongoClient.connect(MONGO_URL, function(err, db) {
 
     db.close();
 });
-const initialChatId = "one";
+const initialChatId = "initial";
 
 const
     bodyParser = require('body-parser'),
@@ -282,48 +282,22 @@ function receivedMessage(event) {
     }
 
     getUserInfo(senderID, function (response) {
-        MongoClient.connect(MONGO_URL, function(err, db) {
-            db.collection('users').find({psid:senderID}).toArray(function(err, users) {
-                console.log(users);
-                var user;
-                if (users.length === 0){
-                    user = {
-                        psid: senderID,
-                        currentChatName: initialChatId
-                    }
-                    db.collection('users').updateOne({psid:senderID}, {$set: {currentChatName: initialChatId}}, {
-                        upsert: true
-                    });
-                } else {
-                    user = users[0];
-                }
-                var chatName = user.currentChatName;
-                db.collection('chatscripts').find({name:chatName}).toArray(function(err, chats) {
-                    var currentChat = chats[0];
-
-                    db.close();
-
-                    recipientInfo = JSON.parse(response);
-                    console.log(recipientInfo);
-                    if (messageText) {
-                        if(messageText.substring(0,1) === '*'){
-                            sendTextMessage(senderID, "*Noted, thanks for the feedback!");
-                            return;
-                        }
-                        switch (messageText) {
-                            case 'name':
-                                sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
-                                break;
-                            default:
-                                sendMessageContent(currentChat.message, senderID, recipientInfo);
-                        }
-                    } else if (messageAttachments) {
-                        sendTextMessage(senderID, "Message with attachment received");
-                    }
-
-                });
-            });
-        });
+        recipientInfo = JSON.parse(response);
+        if (messageText) {
+            if(messageText.substring(0,1) === '*'){
+                sendTextMessage(senderID, "*Noted, thanks for the feedback!");
+                return;
+            }
+            switch (messageText) {
+                case 'name':
+                    sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
+                    break;
+                default:
+                    handleQuickReply("any-text", senderID, recipientInfo);
+            }
+        } else if (messageAttachments) {
+            sendTextMessage(senderID, "Message with attachment received");
+        }
     });
 }
 
@@ -452,20 +426,30 @@ function handleQuickReply(payload, recipientId, recipientInfo) {
             var chatName = user.currentChatName;
             db.collection('chatscripts').find({name: chatName}).toArray(function (err, chats) {
                 var currentChat = chats[0];
-
                 var chatTransitions = currentChat.transitions;
-                chatTransitions.forEach(function (transition) {
-                    if (transition.signal == payload) {
+                var chatMessage = currentChat.message;
+                var found = false;
+                for(var i = 0; i < chatTransitions.length; i++) {
+                    if (chatTransitions[i].signal == payload) {
+                        var transition = chatTransitions[i];
+                        found = true;
                         db.collection('chatscripts').find({name: transition.target}).toArray(function (err, chats) {
                             var newChat = chats[0];
 
                             db.collection('users').updateOne({psid: recipientId}, {$set: {currentChatName: newChat.name}}, {
                                 upsert: true
                             });
-                            sendMessageContent(newChat.message, recipientId, recipientInfo);
+                            chatMessage = newChat.message;
+
+                            sendMessageContent(chatMessage, recipientId, recipientInfo);
+                            db.close();
                         });
+                        break;
                     }
-                });
+                }
+                if(!found){
+                    sendMessageContent(chatMessage, recipientId, recipientInfo);
+                }
             });
         });
     });
