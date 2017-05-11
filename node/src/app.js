@@ -315,7 +315,7 @@ function receivedMessage(event) {
                                 sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
                                 break;
                             default:
-                                sendMessageContent(currentChat.message, senderID);
+                                sendMessageContent(currentChat.message, senderID, recipientInfo);
                         }
                     } else if (messageAttachments) {
                         sendTextMessage(senderID, "Message with attachment received");
@@ -462,7 +462,7 @@ function handleQuickReply(payload, recipientId, recipientInfo) {
                             db.collection('users').updateOne({psid: recipientId}, {$set: {currentChatName: newChat.name}}, {
                                 upsert: true
                             });
-                            sendMessageContent(newChat.message, recipientId);
+                            sendMessageContent(newChat.message, recipientId, recipientInfo);
                         });
                     }
                 });
@@ -472,7 +472,8 @@ function handleQuickReply(payload, recipientId, recipientInfo) {
 }
 
 
-function sendMessageContent(messageContent, recipientId) {
+function sendMessageContent(messageContent, recipientId, recipientInfo) {
+    messageContent.text = messageContent.text.split('{first_name}').join(recipientInfo.first_name);
     var messageData = {
         recipient: {
             id: recipientId
