@@ -275,7 +275,9 @@ function receivedMessage(event) {
             messageId, quickReplyPayload);
         getUserInfo(senderID, function (response) {
             recipientInfo = JSON.parse(response);
-            handleQuickReply(quickReplyPayload, senderID, recipientInfo);
+            console.log("Handling quick reply");
+            console.log(recipientInfo);
+            handleTrigger(quickReplyPayload, senderID, recipientInfo);
         });
 
         return;
@@ -293,7 +295,9 @@ function receivedMessage(event) {
                     sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
                     break;
                 default:
-                    handleQuickReply("any-text", senderID, recipientInfo);
+                    console.log("Handling any text");
+                    console.log(recipientInfo);
+                    handleTrigger("any-text", senderID, recipientInfo);
             }
         } else if (messageAttachments) {
             sendTextMessage(senderID, "Message with attachment received");
@@ -408,55 +412,88 @@ function sendTextMessage(recipientId, messageText) {
     callSendAPI(messageData);
 }
 
-function handleQuickReply(payload, recipientId, recipientInfo) {
-    MongoClient.connect(MONGO_URL, function(err, db) {
-        db.collection('users').find({psid: recipientId}).toArray(function (err, users) {
-            var user;
-            if (users.length === 0) {
-                user = {
-                    psid: recipientId,
-                    currentChatName: initialChatId
-                }
-                db.collection('users').updateOne({psid: recipientId}, {$set: {currentChatName: initialChatId}}, {
-                    upsert: true
-                });
-            } else {
-                user = users[0];
-            }
-            var chatName = user.currentChatName;
-            db.collection('chatscripts').find({name: chatName}).toArray(function (err, chats) {
-                var currentChat = chats[0];
-                var chatTransitions = currentChat.transitions;
-                var chatMessage = currentChat.message;
-                var found = false;
-                for(var i = 0; i < chatTransitions.length; i++) {
-                    if (chatTransitions[i].signal == payload) {
-                        var transition = chatTransitions[i];
-                        found = true;
-                        db.collection('chatscripts').find({name: transition.target}).toArray(function (err, chats) {
-                            var newChat = chats[0];
+function handleTrigger(trigger, recipientId, recipientInfo) {
+    console.log("**** Begin Handle Trigger ****");
+    MongoClient.connect(MONGO_URL, function (err, db) {
+        processTrigger(trigger, db, recipientId, recipientInfo);
+    });
+}
 
-                            db.collection('users').updateOne({psid: recipientId}, {$set: {currentChatName: newChat.name}}, {
-                                upsert: true
-                            });
-                            chatMessage = newChat.message;
+function processTrigger(trigger, db, recipientId, recipientInfo) {
+    console.log("Process trigger");
+    db.collection('users').find({psid: recipientId}).toArray(function (err, users) {
+        if (!users || users.length === 0) {
+            //if there is no such user, initialize the user
+            initiateChat(db, recipientId, recipientInfo);
+        } else {
+            findCurrentChatForUser(users[0], trigger, db, recipientId, recipientInfo);
+        }
+    });
+}
 
-                            sendMessageContent(chatMessage, recipientId, recipientInfo);
-                            db.close();
-                        });
-                        break;
-                    }
-                }
-                if(!found){
-                    sendMessageContent(chatMessage, recipientId, recipientInfo);
-                }
-            });
-        });
+function findCurrentChatForUser(user, trigger, db, recipientId, recipientInfo) {
+    console.log("Find Current Chat For user, chatname: " + user.currentChatName);
+    db.collection('chatscripts').find({name: user.currentChatName}).toArray(function (err, chats) {
+        if (!chats || chats.length === 0) {
+            //if the user's current state points to a non-existent chat, restart their chat
+            initiateChat(db, recipientId, recipientInfo);
+        } else {
+            findNextChatForUser(chats[0], trigger, db, recipientId, recipientInfo);
+        }
+    });
+}
+
+function findNextChatForUser(chat, trigger, db, recipientId, recipientInfo) {
+   console.log("FindNextChatForUser, transition: " + trigger);
+   var nextChatName = null;
+    for (var i = 0; i < chat.transitions.length; i++) {
+        if (chat.transitions[i].signal == trigger) {
+            nextChatName = chat.transitions[i].target;
+            break;
+        }
+    }
+    if (nextChatName) {
+        processChatMessage(nextChatName, db, recipientId, recipientInfo);
+    } else {
+        console.log("Closing DB");
+        db.close();
+    }
+}
+
+function processChatMessage (chatName, db, recipientId, recipientInfo){
+    console.log("Process Chat Message for chat: " + chatName);
+    db.collection('chatscripts').find({name: chatName}).toArray(function (err, chats) {
+        if (!chats || chats.length === 0) {
+            //if the user's chat transition points to a non-existent chat, do nothing
+            //initiateChat(db, recipientId, recipientInfo);
+        } else {
+            sendMessageContent(chats[0].message, chatName, db, recipientId, recipientInfo);
+        }
+    });
+}
+
+function updateUserChatState (chatName, db, recipientId, recipientInfo) {
+    console.log("Update User Chat State to " + chatName);
+    db.collection('users').updateOne(
+        {psid: recipientId},
+        {$set:
+            {currentChatName: chatName}
+        },
+        {upsert: true}
+    ).then(function(){
+        processTrigger("auto", db, recipientId, recipientInfo);
     });
 }
 
 
-function sendMessageContent(messageContent, recipientId, recipientInfo) {
+function initiateChat(db, recipientId, recipientInfo) {
+    console.log("Initiate Chat");
+    processChatMessage(initialChatId, db, recipientId, recipientInfo);
+}
+
+function sendMessageContent(messageContent, chatName, db, recipientId, recipientInfo) {
+    console.log("Send message content");
+    console.log(messageContent);
     messageContent.text = messageContent.text.split('{first_name}').join(recipientInfo.first_name);
     var messageData = {
         recipient: {
@@ -465,7 +502,7 @@ function sendMessageContent(messageContent, recipientId, recipientInfo) {
         message: messageContent
     }
 
-    callSendAPI(messageData);
+    callSendAPI(messageData, chatName, db, recipientId, recipientInfo);
 }
 
 /*
@@ -473,7 +510,7 @@ function sendMessageContent(messageContent, recipientId, recipientInfo) {
  * get the message id in a response
  *
  */
-function callSendAPI(messageData) {
+function callSendAPI(messageData, chatName, db, recipientID, recipientInfo) {
     request({
         uri: 'https://graph.facebook.com/v2.6/me/messages',
         qs: {access_token: PAGE_ACCESS_TOKEN},
@@ -492,6 +529,8 @@ function callSendAPI(messageData) {
                 console.log("Successfully called Send API for recipient %s",
                     recipientId);
             }
+
+            updateUserChatState(chatName, db, recipientID, recipientInfo);
         } else {
             console.error("Failed calling Send API", response.statusCode, response.statusMessage, body.error);
         }
