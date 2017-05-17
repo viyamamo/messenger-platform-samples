@@ -23,7 +23,9 @@ MongoClient.connect(MONGO_URL, function(err, db) {
 
     db.close();
 });
+
 const initialChatId = "initial";
+const menuInitialChatName = "menu_initial";
 
 const
     bodyParser = require('body-parser'),
@@ -252,7 +254,7 @@ function receivedMessage(event) {
     var metadata = message.metadata;
 
     // You may get a text or attachment but not both
-    var messageText = message.text;
+    var messageText = message.text.toLowerCase();
     var messageAttachments = message.attachments;
     var quickReply = message.quick_reply;
 
@@ -293,6 +295,9 @@ function receivedMessage(event) {
             switch (messageText) {
                 case 'name':
                     sendTextMessage(senderID, "Your name is " + recipientInfo.first_name + ".");
+                    break;
+                case 'menu':
+                    openMenu(senderID, recipientInfo);
                     break;
                 default:
                     console.log("Handling any text");
@@ -412,6 +417,13 @@ function sendTextMessage(recipientId, messageText) {
     callSendAPI(messageData);
 }
 
+function openMenu(recipientId, recipientInfo) {
+    console.log("**** Begin Open Menu ****");
+    MongoClient.connect(MONGO_URL, function (err, db) {
+        updateUserChatState(menuInitialChatName, db, recipientId, recipientInfo);
+    });
+}
+
 function handleTrigger(trigger, recipientId, recipientInfo) {
     console.log("**** Begin Handle Trigger ****");
     MongoClient.connect(MONGO_URL, function (err, db) {
@@ -474,15 +486,17 @@ function processChatMessage (chatName, db, recipientId, recipientInfo){
 
 function updateUserChatState (chatName, db, recipientId, recipientInfo) {
     console.log("Update User Chat State to " + chatName);
-    db.collection('users').updateOne(
-        {psid: recipientId},
-        {$set:
-            {currentChatName: chatName}
-        },
-        {upsert: true}
-    ).then(function(){
-        processTrigger("auto", db, recipientId, recipientInfo);
-    });
+    if (db) {
+        db.collection('users').updateOne(
+            {psid: recipientId},
+            {$set:
+                {currentChatName: chatName}
+            },
+            {upsert: true}
+        ).then(function(){
+            processTrigger("auto", db, recipientId, recipientInfo);
+        });
+    }
 }
 
 
@@ -494,7 +508,9 @@ function initiateChat(db, recipientId, recipientInfo) {
 function sendMessageContent(messageContent, chatName, db, recipientId, recipientInfo) {
     console.log("Send message content");
     console.log(messageContent);
-    messageContent.text = messageContent.text.split('{first_name}').join(recipientInfo.first_name);
+    if(messageContent.text){
+        messageContent.text = messageContent.text.split('{first_name}').join(recipientInfo.first_name);
+    }
     var messageData = {
         recipient: {
             id: recipientId
