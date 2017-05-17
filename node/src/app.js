@@ -26,6 +26,7 @@ MongoClient.connect(MONGO_URL, function(err, db) {
 
 const initialChatId = "initial";
 const menuInitialChatName = "menu_initial";
+const CUSTOM_RETURN_TARGET = "USER_RETURN_CHAT_NAME";
 
 const
     bodyParser = require('body-parser'),
@@ -450,12 +451,12 @@ function findCurrentChatForUser(user, trigger, db, recipientId, recipientInfo) {
             //if the user's current state points to a non-existent chat, restart their chat
             initiateChat(db, recipientId, recipientInfo);
         } else {
-            findNextChatForUser(chats[0], trigger, db, recipientId, recipientInfo);
+            findNextChatForUser(chats[0], user.returnChatName, trigger, db, recipientId, recipientInfo);
         }
     });
 }
 
-function findNextChatForUser(chat, trigger, db, recipientId, recipientInfo) {
+function findNextChatForUser(chat, returnChatName, trigger, db, recipientId, recipientInfo) {
    console.log("FindNextChatForUser, transition: " + trigger);
    var nextChatName = null;
     for (var i = 0; i < chat.transitions.length; i++) {
@@ -465,35 +466,45 @@ function findNextChatForUser(chat, trigger, db, recipientId, recipientInfo) {
         }
     }
     if (nextChatName) {
-        processChatMessage(nextChatName, db, recipientId, recipientInfo);
+        processChatMessage(nextChatName, returnChatName, db, recipientId, recipientInfo);
     } else {
         console.log("Closing DB");
         db.close();
     }
 }
 
-function processChatMessage (chatName, db, recipientId, recipientInfo){
+function processChatMessage (chatName, returnChatName, db, recipientId, recipientInfo){
     console.log("Process Chat Message for chat: " + chatName);
-    db.collection('chatscripts').find({name: chatName}).toArray(function (err, chats) {
+    var targetChatName = (chatName === CUSTOM_RETURN_TARGET) ? returnChatName : chatName;
+    console.log("Target chat: " + chatName);
+    db.collection('chatscripts').find({name: targetChatName}).toArray(function (err, chats) {
         if (!chats || chats.length === 0) {
             //if the user's chat transition points to a non-existent chat, do nothing
             //initiateChat(db, recipientId, recipientInfo);
         } else {
-            sendMessageContent(chats[0].message, chatName, db, recipientId, recipientInfo);
+            sendMessageContent(chats[0].message, targetChatName, db, recipientId, recipientInfo, chats[0].returnTarget);
         }
     });
 }
 
-function updateUserChatState (chatName, db, recipientId, recipientInfo) {
+function updateUserChatState(chatName, db, recipientId, recipientInfo, chatReturnTarget) {
     console.log("Update User Chat State to " + chatName);
+    var updatedUserInformation = {
+        currentChatName: chatName
+    };
+
+    if (chatReturnTarget) {
+        updatedUserInformation.returnChatName = chatReturnTarget;
+    }
+
     if (db) {
         db.collection('users').updateOne(
             {psid: recipientId},
-            {$set:
-                {currentChatName: chatName}
+            {
+                $set: updatedUserInformation
             },
             {upsert: true}
-        ).then(function(){
+        ).then(function () {
             processTrigger("auto", db, recipientId, recipientInfo);
         });
     }
@@ -505,7 +516,7 @@ function initiateChat(db, recipientId, recipientInfo) {
     processChatMessage(initialChatId, db, recipientId, recipientInfo);
 }
 
-function sendMessageContent(messageContent, chatName, db, recipientId, recipientInfo) {
+function sendMessageContent(messageContent, chatName, db, recipientId, recipientInfo, returnToChat) {
     console.log("Send message content");
     console.log(messageContent);
     if(messageContent.text){
@@ -518,7 +529,7 @@ function sendMessageContent(messageContent, chatName, db, recipientId, recipient
         message: messageContent
     }
 
-    callSendAPI(messageData, chatName, db, recipientId, recipientInfo);
+    callSendAPI(messageData, chatName, db, recipientId, recipientInfo, returnToChat);
 }
 
 /*
@@ -526,7 +537,7 @@ function sendMessageContent(messageContent, chatName, db, recipientId, recipient
  * get the message id in a response
  *
  */
-function callSendAPI(messageData, chatName, db, recipientID, recipientInfo) {
+function callSendAPI(messageData, chatName, db, recipientID, recipientInfo, returnToChat) {
     request({
         uri: 'https://graph.facebook.com/v2.6/me/messages',
         qs: {access_token: PAGE_ACCESS_TOKEN},
@@ -546,7 +557,7 @@ function callSendAPI(messageData, chatName, db, recipientID, recipientInfo) {
                     recipientId);
             }
 
-            updateUserChatState(chatName, db, recipientID, recipientInfo);
+            updateUserChatState(chatName, db, recipientID, recipientInfo, returnToChat);
         } else {
             console.error("Failed calling Send API", response.statusCode, response.statusMessage, body.error);
         }
