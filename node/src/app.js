@@ -459,18 +459,37 @@ function findCurrentChatForUser(user, trigger, db, recipientId, recipientInfo) {
 function findNextChatForUser(chat, returnChatName, trigger, db, recipientId, recipientInfo) {
    console.log("FindNextChatForUser, transition: " + trigger);
    var nextChatName = null;
+   var nextChatType = null;
     for (var i = 0; i < chat.transitions.length; i++) {
         if (chat.transitions[i].signal == trigger) {
             nextChatName = chat.transitions[i].target;
+            nextChatType = chat.transitions[i].targetType;
             break;
         }
     }
-    if (nextChatName) {
+    if (nextChatType && nextChatType === "module") {
+        processChatModule(nextChatName, db, recipientId, recipientInfo);
+    }
+    else if (nextChatName) {
         processChatMessage(nextChatName, returnChatName, db, recipientId, recipientInfo);
     } else {
         console.log("Closing DB");
         db.close();
     }
+}
+
+function processChatModule (nextModuleName, db, recipientId, recipientInfo){
+    console.log("Process Chat Message for module: " + nextModuleName);
+    db.collection('chatscripts').find({moduleName: nextModuleName}).toArray(function (err, chats) {
+        if (!chats || chats.length === 0) {
+            //if the user's chat transition points to a non-existent chat, do nothing
+            //initiateChat(db, recipientId, recipientInfo);
+        } else {
+            var chat = chats[Math.floor(Math.random() * chats.length)];
+            console.log("Target chat: " + chat.name);
+            sendMessageContent(chat.message, chat.name, db, recipientId, recipientInfo, chat.returnTarget);
+        }
+    });
 }
 
 function processChatMessage (chatName, returnChatName, db, recipientId, recipientInfo){
