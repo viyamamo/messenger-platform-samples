@@ -255,7 +255,7 @@ function receivedMessage(event) {
     var metadata = message.metadata;
 
     // You may get a text or attachment but not both
-    var messageText = message.text.toLowerCase();
+    var messageText = message.text ? message.text.toLowerCase() : null;
     var messageAttachments = message.attachments;
     var quickReply = message.quick_reply;
 
@@ -532,7 +532,7 @@ function updateUserChatState(chatName, db, recipientId, recipientInfo, chatRetur
 
 function initiateChat(db, recipientId, recipientInfo) {
     console.log("Initiate Chat");
-    processChatMessage(initialChatId, db, recipientId, recipientInfo);
+    processChatMessage(initialChatId, initialChatId, db, recipientId, recipientInfo);
 }
 
 function sendMessageContent(messageContent, chatName, db, recipientId, recipientInfo, returnToChat) {
