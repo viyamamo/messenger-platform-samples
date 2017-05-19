@@ -1,7 +1,7 @@
 {
-  "name": "messenger-get-started",
-  "version": "1.0.0",
-  "description": "Get started example for Messenger Platform",
+  "name": "hope-lab-chat-bot",
+  "version": "0.1.1",
+  "description": "ChatBot for HopeLab",
   "main": "app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -10,10 +10,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/fbsamples/messenger-platform-samples.git"
+    "url": "https://github.com/viyamamo/messenger-platform-samples.git"
   },
-  "author": "Facebook",
-  "license": "ISC",
+  "author": "HopeLab",
   "dependencies": {
     "body-parser": "^1.15.0",
     "config": "^1.20.4",

@@ -14,8 +14,7 @@ var MongoClient = require('mongodb').MongoClient
     , assert = require('assert');
 
 // Connection URL
-const MONGO_URL = 'mongodb://localhost:27017/hopelab';
-
+const MONGO_URL = "mongodb://viyamamo:WildConstipatedGiraffe0518!@hopelabcluster-shard-00-00-x2eo0.mongodb.net:27017,hopelabcluster-shard-00-01-x2eo0.mongodb.net:27017,hopelabcluster-shard-00-02-x2eo0.mongodb.net:27017/hopelab?ssl=true&replicaSet=HopeLabCluster-shard-0&authSource=admin"
 // Use connect method to connect to the server
 MongoClient.connect(MONGO_URL, function(err, db) {
     assert.equal(null, err);
@@ -24,7 +23,7 @@ MongoClient.connect(MONGO_URL, function(err, db) {
     db.close();
 });
 
-const initialChatId = "initial";
+const initialChatId = "introchat_001_A";
 const menuInitialChatName = "menu_initial";
 const CUSTOM_RETURN_TARGET = "USER_RETURN_CHAT_NAME";
 
@@ -37,7 +36,7 @@ const
     request = require('request');
 
 var app = express();
-app.set('port', process.env.PORT || 3000);
+app.set('port', process.env.PORT || 8081);
 app.set('view engine', 'ejs');
 app.use(bodyParser.json({verify: verifyRequestSignature}));
 app.use(express.static('public'));
@@ -509,7 +508,9 @@ function processChatMessage (chatName, returnChatName, db, recipientId, recipien
 function updateUserChatState(chatName, db, recipientId, recipientInfo, chatReturnTarget) {
     console.log("Update User Chat State to " + chatName);
     var updatedUserInformation = {
-        currentChatName: chatName
+        currentChatName: chatName,
+        firstName: recipientInfo.first_name,
+        lastName: recipientInfo.last_name
     };
 
     if (chatReturnTarget) {
