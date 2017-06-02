@@ -16,7 +16,7 @@ var MongoClient = require('mongodb').MongoClient
 // Connection URL
 const MONGO_URL = "mongodb://viyamamo:WildConstipatedGiraffe0518!@hopelabcluster-shard-00-00-x2eo0.mongodb.net:27017,hopelabcluster-shard-00-01-x2eo0.mongodb.net:27017,hopelabcluster-shard-00-02-x2eo0.mongodb.net:27017/hopelab?ssl=true&replicaSet=HopeLabCluster-shard-0&authSource=admin"
 // Use connect method to connect to the server
-MongoClient.connect(MONGO_URL, function(err, db) {
+MongoClient.connect(MONGO_URL, function (err, db) {
     assert.equal(null, err);
     console.log("Connected successfully to server");
 
@@ -29,7 +29,7 @@ const CUSTOM_RETURN_TARGET = "USER_RETURN_CHAT_NAME";
 
 const
     bodyParser = require('body-parser'),
-    config = require('config'),
+    config = require('./config'),
     crypto = require('crypto'),
     express = require('express'),
     https = require('https'),
@@ -57,23 +57,23 @@ if (!String.prototype.format) {
 // App Secret can be retrieved from the App Dashboard
 const APP_SECRET = (process.env.MESSENGER_APP_SECRET) ?
     process.env.MESSENGER_APP_SECRET :
-    config.get('appSecret');
+    config.appSecret
 
 // Arbitrary value used to validate a webhook
 const VALIDATION_TOKEN = (process.env.MESSENGER_VALIDATION_TOKEN) ?
     (process.env.MESSENGER_VALIDATION_TOKEN) :
-    config.get('validationToken');
+    config.validationToken;
 
 // Generate a page access token for your page from the App Dashboard
 const PAGE_ACCESS_TOKEN = (process.env.MESSENGER_PAGE_ACCESS_TOKEN) ?
     (process.env.MESSENGER_PAGE_ACCESS_TOKEN) :
-    config.get('pageAccessToken');
+    config.pageAccessToken;
 
 // URL where the app is running (include protocol). Used to point to scripts and
 // assets located at this address.
 const SERVER_URL = (process.env.SERVER_URL) ?
     (process.env.SERVER_URL) :
-    config.get('serverURL');
+    config.serverURL
 
 if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
     console.error("Missing config values");
@@ -288,7 +288,7 @@ function receivedMessage(event) {
     getUserInfo(senderID, function (response) {
         recipientInfo = JSON.parse(response);
         if (messageText) {
-            if(messageText.substring(0,1) === '*'){
+            if (messageText.substring(0, 1) === '*') {
                 sendTextMessage(senderID, "*Noted, thanks for the feedback!");
                 return;
             }
@@ -369,7 +369,7 @@ function receivedPostback(event) {
  *
  */
 function receivedMessageRead(event) {
-    var senderID = event.sender.id;
+    var senderID = event.id;
     var recipientID = event.recipient.id;
 
     // All messages before watermark (a timestamp) or sequence have been seen.
@@ -397,6 +397,21 @@ function receivedAccountLink(event) {
 
     console.log("Received account link event with for user %d with status %s " +
         "and auth code %s ", senderID, status, authCode);
+}
+
+/*
+ * Sends Actions like typing_on bubble
+ *
+ */
+function sendSenderAction(recipientId, senderAction) {
+    var messageData = {
+        recipient: {
+            id: recipientId
+        },
+        sender_action: senderAction
+    };
+
+    callSendAPI(messageData);
 }
 
 /*
@@ -456,9 +471,10 @@ function findCurrentChatForUser(user, trigger, db, recipientId, recipientInfo) {
 }
 
 function findNextChatForUser(chat, returnChatName, trigger, db, recipientId, recipientInfo) {
-   console.log("FindNextChatForUser, transition: " + trigger);
-   var nextChatName = null;
-   var nextChatType = null;
+    console.log("FindNextChatForUser, transition: " + trigger);
+    var nextChatName = null;
+    var nextChatType = null;
+    var pauseTimeInSeconds = 2;
     for (var i = 0; i < chat.transitions.length; i++) {
         if (chat.transitions[i].signal == trigger) {
             nextChatName = chat.transitions[i].target;
@@ -467,17 +483,17 @@ function findNextChatForUser(chat, returnChatName, trigger, db, recipientId, rec
         }
     }
     if (nextChatType && nextChatType === "module") {
-        processChatModule(nextChatName, db, recipientId, recipientInfo);
+        processChatModule(nextChatName, db, recipientId, recipientInfo, pauseTimeInSeconds);
     }
     else if (nextChatName) {
-        processChatMessage(nextChatName, returnChatName, db, recipientId, recipientInfo);
+        processChatMessage(nextChatName, returnChatName, db, recipientId, recipientInfo, pauseTimeInSeconds);
     } else {
         console.log("Closing DB");
         db.close();
     }
 }
 
-function processChatModule (nextModuleName, db, recipientId, recipientInfo){
+function processChatModule(nextModuleName, db, recipientId, recipientInfo, pauseTime) {
     console.log("Process Chat Message for module: " + nextModuleName);
     db.collection('chatscripts').find({moduleName: nextModuleName}).toArray(function (err, chats) {
         if (!chats || chats.length === 0) {
@@ -486,12 +502,20 @@ function processChatModule (nextModuleName, db, recipientId, recipientInfo){
         } else {
             var chat = chats[Math.floor(Math.random() * chats.length)];
             console.log("Target chat: " + chat.name);
-            sendMessageContent(chat.message, chat.name, db, recipientId, recipientInfo, chat.returnTarget);
+            if (pauseTime && pauseTime > 0) {
+                sendSenderAction(recipientId, "typing_on");
+                setTimeout(function () {
+                    sendMessageContent(chat.message, chat.name, db, recipientId, recipientInfo, chat.returnTarget);
+                }, pauseTime * 1000);
+
+            } else {
+                sendMessageContent(chat.message, chat.name, db, recipientId, recipientInfo, chat.returnTarget);
+            }
         }
     });
 }
 
-function processChatMessage (chatName, returnChatName, db, recipientId, recipientInfo){
+function processChatMessage(chatName, returnChatName, db, recipientId, recipientInfo, pauseTime) {
     console.log("Process Chat Message for chat: " + chatName);
     var targetChatName = (chatName === CUSTOM_RETURN_TARGET) ? returnChatName : chatName;
     console.log("Target chat: " + chatName);
@@ -500,7 +524,15 @@ function processChatMessage (chatName, returnChatName, db, recipientId, recipien
             //if the user's chat transition points to a non-existent chat, do nothing
             //initiateChat(db, recipientId, recipientInfo);
         } else {
-            sendMessageContent(chats[0].message, targetChatName, db, recipientId, recipientInfo, chats[0].returnTarget);
+            if (pauseTime && pauseTime > 0) {
+                sendSenderAction(recipientId, "typing_on");
+                setTimeout(function () {
+                    sendMessageContent(chats[0].message, targetChatName, db, recipientId, recipientInfo, chats[0].returnTarget);
+                }, pauseTime * 1000);
+
+            } else {
+                sendMessageContent(chats[0].message, targetChatName, db, recipientId, recipientInfo, chats[0].returnTarget);
+            }
         }
     });
 }
@@ -539,7 +571,7 @@ function initiateChat(db, recipientId, recipientInfo) {
 function sendMessageContent(messageContent, chatName, db, recipientId, recipientInfo, returnToChat) {
     console.log("Send message content");
     console.log(messageContent);
-    if(messageContent.text){
+    if (messageContent.text) {
         messageContent.text = messageContent.text.split('{first_name}').join(recipientInfo.first_name);
     }
     var messageData = {
@@ -577,7 +609,9 @@ function callSendAPI(messageData, chatName, db, recipientID, recipientInfo, retu
                     recipientId);
             }
 
-            updateUserChatState(chatName, db, recipientID, recipientInfo, returnToChat);
+            if (chatName) {
+                updateUserChatState(chatName, db, recipientID, recipientInfo, returnToChat);
+            }
         } else {
             console.error("Failed calling Send API", response.statusCode, response.statusMessage, body.error);
         }
